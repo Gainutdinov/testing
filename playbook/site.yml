@@ -1,0 +1,113 @@
+---
+# - name: Install Clickhouse
+#   hosts: clickhouse
+#   handlers:
+#     - name: Start clickhouse service
+#       become: true
+#       ansible.builtin.service:
+#         name: clickhouse-server
+#         state: restarted
+#   tasks:
+#     - block:
+#         - name: Get clickhouse distrib
+#           ansible.builtin.get_url:
+#             url: "https://packages.clickhouse.com/rpm/stable/{{ item }}-{{ clickhouse_version }}.noarch.rpm"
+#             dest: "./{{ item }}-{{ clickhouse_version }}.rpm"
+#           with_items: "{{ clickhouse_packages }}"
+#       rescue:
+#         - name: Get clickhouse distrib
+#           ansible.builtin.get_url:
+#             url: "https://packages.clickhouse.com/rpm/stable/clickhouse-common-static-{{ clickhouse_version }}.x86_64.rpm"
+#             dest: "./clickhouse-common-static-{{ clickhouse_version }}.rpm"
+#     - name: Install clickhouse packages
+#       become: true
+#       ansible.builtin.yum:
+#         name:
+#           - clickhouse-common-static-{{ clickhouse_version }}.rpm
+#           - clickhouse-client-{{ clickhouse_version }}.rpm
+#           - clickhouse-server-{{ clickhouse_version }}.rpm
+#       notify: Start clickhouse service
+#     - name: Create database
+#       ansible.builtin.command: "clickhouse-client -q 'create database logs;'"
+#       register: create_db
+#       failed_when: create_db.rc != 0 and create_db.rc !=82
+#       changed_when: create_db.rc == 0
+- name: Install Vector
+  hosts: vector
+  handlers:
+    - name: Start vector service
+      become: true
+      ansible.builtin.service:
+        name: clickhouse-server
+        state: restarted
+  tasks:
+    - name: ensure vector group
+      ansible.builtin.group:
+        name: "{{ vector_group }}"
+        system: true
+        state: present
+    - name: ensure vector user
+      ansible.builtin.user:
+        name: "{{ vector_user }}"
+        group: "{{ vector_group }}"
+        groups: "{{ vector_groups | default('') }}"
+        system: true
+        shell: /usr/sbin/nologin
+        createhome: false
+    - name: ensure skeleton paths
+      ansible.builtin.file:
+        dest: "{{ item }}"
+        owner: "{{ vector_user }}"
+        group: "{{ vector_group }}"
+        mode: "0755"
+        state: directory
+      with_items:
+        - "{{ vector_skeleton_paths }}"
+    - name: ensure skeleton paths
+      ansible.builtin.file:
+        dest: "{{ item }}"
+        owner: "{{ vector_user }}"
+        group: "{{ vector_group }}"
+        mode: "0755"
+        state: directory
+      with_items:
+        - "{{ vector_skeleton_paths }}"
+    - name: Download file site
+      get_url:
+        url: "https://packages.timber.io/vector/{{ vector_version }}/vector-{{ vector_version }}-x86_64-unknown-linux-musl.tar.gz"
+        dest: "/tmp/vector-{{ vector_version }}-x86_64-unknown-linux-musl.tar.gz"
+    - name: Extract vector-0.25.1-x86_64-unknown-linux-musl.tar.gz into /usr/bin
+      unarchive:
+        src: "/tmp/vector-{{ vector_version }}-x86_64-unknown-linux-musl.tar.gz"
+        dest: /usr/bin/vector
+        remote_src: true
+        extra_opts: [--strip-components=2]
+    - name: Add a line to a file if the file does not exist, without passing regexp
+      ansible.builtin.lineinfile:
+        path: /etc/profile
+        line: PATH=$PATH:/usr/bin/vector/bin
+        mode: '0644'
+        create: true
+    - name: Disable SELinux
+      ansible.posix.selinux:
+        state: disabled
+    - name: Create vector.service
+      ansible.builtin.template:
+        src: templates/vector/vector.service.j2
+        dest: /etc/systemd/system/vector.service
+        group: root
+        setype: root
+        mode: 0640
+    - name: Create vector.service
+      ansible.builtin.template:
+        src: templates/vector/vector.toml.j2
+        dest: /etc/vector/vector.toml
+        group: vector
+        setype: vector
+        mode: 0640
+    - name: Make sure vector.service is running service
+      ansible.builtin.systemd:
+        name: vector
+        state: started
+        enabled: true
+        daemon_reload: true

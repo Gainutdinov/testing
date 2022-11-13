@@ -1,0 +1,15 @@
+---
+vector_user:  "vector"
+vector_group: "vector"
+# Start on boot
+vector_service_enabled: True
+# Current state: started, stopped
+vector_service_state: "started"
+vector_skeleton_paths: 
+  - "/usr/bin/vector"
+  - "/etc/vector"
+  - "/var/lib/vector"
+vector_exec_name: vector
+vector_version: 0.25.1
+vector_package_architecture: amd64
+vector_data_dir: "/var/lib/vector"
